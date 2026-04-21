@@ -56,6 +56,8 @@ def run_workflow(
     Entry point for a full workflow run.
     Creates the root WIT, runs the graph, and returns a cost summary.
     """
+
+    "1. creates root_wit and prints initial info"
     root_wit = WorkflowIdentityToken.create(
         initiator=initiator,
         tenant_id=tenant_id,
@@ -67,11 +69,16 @@ def run_workflow(
     print(f"AgentLedger — Workflow Run")
     print(f"{'='*60}")
     print(f"  workflow_id   : {root_wit.workflow_id}")
+    print(f"  span_id   : {root_wit.span_id}")
     print(f"  initiator     : {root_wit.initiator}")
     print(f"  tenant        : {root_wit.tenant_id}")
     print(f"  class         : {root_wit.workflow_class}")
+    print(f" token signature : {root_wit.signature[:8]}…")
     print(f"  input         : {user_input[:80]}")
     print(f"{'─'*60}")
+
+
+    "2. builds graph and runs it with root_wit in context, which returns the final state"
 
     initial_state: PipelineState = {
         "user_input": user_input,
@@ -87,12 +94,15 @@ def run_workflow(
     with wit_context(root_wit):
         final_state = app.invoke(initial_state)
 
+    "3. extracts spans for this workflow and builds a cost summary"
+
     # ------------------------------------------------------------------
     # Build cost summary from OTel spans
     # ------------------------------------------------------------------
     spans = get_finished_spans()
     workflow_spans = [
         s for s in spans
+        "filter spans for this workflow using the wit.workflow_id attribute"
         if s.attributes.get("wit.workflow_id") == root_wit.workflow_id
     ]
 
@@ -123,6 +133,7 @@ def run_workflow(
                 "cost_usd": s.attributes.get("llm.estimated_cost_usd", 0.0),
                 "duration_ms": s.attributes.get("agent.duration_ms", 0),
             }
+            print(s.attributes.get("agent.name"), s.attributes.get("wit.depth"))
             for s in workflow_spans
         ],
     }
